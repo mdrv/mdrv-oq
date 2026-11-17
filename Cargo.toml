@@ -23,3 +23,15 @@ nsh-platform-macos = { version = "0.5.1", default-features = false, features = [
 
 [target.'cfg(target_os = "windows")'.dependencies]
 nsh-platform-windows = { version = "0.5.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }
+
+# Colored SVG tray icons (upstream treats every SVG as a black/white
+# panel-tinted template); branch mdrv-oq/tray-api in the local clone.
+# The whole nsh chain must be patched together: the clone's crates use
+# workspace path deps, so patching only the platform crate would create
+# a second, distinct nsh-core and break the Component impl.
+[patch.crates-io]
+nsh-core = { path = "/g/_ext/nsh/crates/nsh-core" }
+nsh-base = { path = "/g/_ext/nsh/crates/nsh-base" }
+nsh-engine = { path = "/g/_ext/nsh/crates/nsh-engine" }
+nsh-macros = { path = "/g/_ext/nsh/crates/nsh-macros" }
+nsh-platform-linux = { path = "/g/_ext/nsh/crates/nsh-platform-linux" }
