@@ -10,19 +10,19 @@ publish = false
 
 [dependencies]
 mdrv-oq-core = { path = "crates/mdrv-oq-core" }
-nsh-core = "0.5.1"
-nsh-base = "0.5.1"
+nsh-core = "0.6.0"
+nsh-base = "0.6.0"
 env_logger = "0.11"
 serde_json = "1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nsh-platform-linux = { version = "0.5.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }
+nsh-platform-linux = { version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-nsh-platform-macos = { version = "0.5.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }
+nsh-platform-macos = { version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-nsh-platform-windows = { version = "0.5.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }
+nsh-platform-windows = { version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }
 
 # Colored SVG tray icons (upstream treats every SVG as a black/white
 # panel-tinted template); branch mdrv-oq/tray-api in the local clone.

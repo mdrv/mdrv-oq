@@ -129,11 +129,14 @@ pub fn show_reset(s: &Settings) -> bool {
 /// `$XDG_STATE_HOME/mdrv-oq/settings.db`, defaulting to
 /// `~/.local/state/mdrv-oq/settings.db`.
 pub fn default_db_path() -> PathBuf {
-    let base = match std::env::var("XDG_STATE_HOME") {
+    let base = match std::env::var("MDRV_OQ_STATE_DIR") {
         Ok(s) if !s.trim().is_empty() => PathBuf::from(s),
-        Ok(_) | Err(_) => match std::env::var("HOME") {
-            Ok(h) if !h.trim().is_empty() => PathBuf::from(h).join(".local/state"),
-            _ => PathBuf::from("."),
+        _ => match std::env::var("XDG_STATE_HOME") {
+            Ok(s) if !s.trim().is_empty() => PathBuf::from(s),
+            Ok(_) | Err(_) => match std::env::var("HOME") {
+                Ok(h) if !h.trim().is_empty() => PathBuf::from(h).join(".local/state"),
+                _ => PathBuf::from("."),
+            },
         },
     };
     base.join("mdrv-oq").join("settings.db")
