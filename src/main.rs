@@ -2,7 +2,7 @@
 
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(target_os = "android")))]
 use nsh_platform_linux as platform;
 #[cfg(target_os = "macos")]
 use nsh_platform_macos as platform;

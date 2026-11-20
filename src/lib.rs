@@ -21,6 +21,13 @@ use nsh_core::platform::HttpRequest;
 use nsh_core::prelude::*;
 use nsh_core::time::unix_ms;
 
+/// The app's UI set (`nsh.json` `"rust"`): what `nsh package` describes
+/// and a TSX entry imports as `mdrv-oq/native`.
+#[native_module("mdrv-oq/native")]
+fn native(registry: &mut Registry) {
+    registry.register::<App>();
+}
+
 /// The settings snapshot the UI and the poller read.
 #[derive(Debug, Clone, PartialEq)]
 struct Cfg {
