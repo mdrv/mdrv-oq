@@ -672,9 +672,13 @@ pub fn App() -> impl IntoElement {
                 ),
         )
         .child(
-            text("Closing this window keeps the tray running. Quit from the tray menu.")
-                .text_size(px(11.0))
-                .text_color(move || theme().muted_foreground),
+            text(if cfg!(target_os = "android") {
+                "Polls while the app is open. Background notifications are coming."
+            } else {
+                "Closing this window keeps the tray running. Quit from the tray menu."
+            })
+            .text_size(px(11.0))
+            .text_color(move || theme().muted_foreground),
         )
 }
 
