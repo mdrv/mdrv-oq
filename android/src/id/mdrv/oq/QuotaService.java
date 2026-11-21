@@ -11,6 +11,7 @@ package id.mdrv.oq;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
@@ -45,6 +46,7 @@ public class QuotaService extends Service {
             Executors.newSingleThreadScheduledExecutor();
     private volatile boolean stopped = false;
     private ScheduledFuture<?> task;
+    private volatile long lastPollMs = 0L;
 
     @Override
     public void onCreate() {
@@ -115,10 +117,30 @@ public class QuotaService extends Service {
         }
         try {
             NotificationManager nm = getSystemService(NotificationManager.class);
-            nm.notify(NOTIFICATION_ID, build(status()));
+            lastPollMs = System.currentTimeMillis();
+            nm.notify(NOTIFICATION_ID,
+                    build(status() + "  \uD83D\uDD04 " + lastUpdateAge()));
         } catch (Exception ignored) {
             // A dead notification manager should not kill the loop.
         }
+    }
+
+    /// How long ago the last poll ran, coarse ("now", "2m", "3h", "1d").
+    private String lastUpdateAge() {
+        long seconds = Math.max(0,
+                (System.currentTimeMillis() - lastPollMs) / 1_000);
+        if (seconds < 60) {
+            return "now";
+        }
+        long minutes = seconds / 60;
+        if (minutes < 60) {
+            return minutes + "m";
+        }
+        long hours = minutes / 60;
+        if (hours < 24) {
+            return hours + "h";
+        }
+        return (hours / 24) + "d";
     }
 
     /// One fetch, rendered like the desktop tray line.
@@ -221,12 +243,22 @@ public class QuotaService extends Service {
     }
 
     private Notification build(String text) {
-        return new Notification.Builder(this, CHANNEL_ID)
+        // Tapping the notification opens the app (the launcher activity).
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("mdrv-oq")
                 .setContentText(text)
                 .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .build();
+                .setOnlyAlertOnce(true);
+        Intent open = getPackageManager().getLaunchIntentForPackage(
+                getPackageName());
+        if (open != null) {
+            open.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            builder.setContentIntent(PendingIntent.getActivity(
+                    this, 0, open,
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                            | PendingIntent.FLAG_IMMUTABLE));
+        }
+        return builder.build();
     }
 }
