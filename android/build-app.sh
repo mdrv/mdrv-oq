@@ -33,9 +33,9 @@ mkdir -p "$OUT/classes" "$OUT/lib/arm64-v8a"
 
 # 1. Our Java -> dex (classes2.dex; the runtime's is classes.dex).
 javac --release 11 -classpath "$PLATFORM" -d "$OUT/classes" \
-    "$ROOT"/android/src/id/mdrv/oq/*.java
+    $(find "$ROOT"/android/src -name '*.java')
 "$BT/d8" --release --lib "$PLATFORM" --min-api 26 --output "$OUT" \
-    $(find "$OUT/classes" -name '*.class')
+    $(find "$OUT/classes/id" -name '*.class')
 mv "$OUT/classes.dex" "$OUT/classes2.dex"
 
 # 2. Manifest + assets.

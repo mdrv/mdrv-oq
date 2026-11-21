@@ -31,6 +31,7 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class QuotaService extends Service {
@@ -43,6 +44,7 @@ public class QuotaService extends Service {
     private final ScheduledExecutorService executor =
             Executors.newSingleThreadScheduledExecutor();
     private volatile boolean stopped = false;
+    private ScheduledFuture<?> task;
 
     @Override
     public void onCreate() {
@@ -69,8 +71,13 @@ public class QuotaService extends Service {
             startForeground(NOTIFICATION_ID, notification);
         }
         long interval = intervalSecs();
+        // Repeated starts (app open, boot, adb) reschedule instead of
+        // stacking poll loops, and pick up a changed interval.
+        if (task != null) {
+            task.cancel(false);
+        }
         executor.submit(this::poll);
-        executor.scheduleWithFixedDelay(
+        task = executor.scheduleWithFixedDelay(
                 this::poll, interval, interval, TimeUnit.SECONDS);
         return START_STICKY;
     }

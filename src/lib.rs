@@ -421,9 +421,14 @@ pub fn App() -> impl IntoElement {
         .flex_1()
         .flex_col()
         .p_safe_area()
-        .p(px(20.0))
-        .gap(px(12.0))
         .bg(move || theme().background)
+        .child(
+            scroll().flex_1().child(
+                view()
+                    .flex_col()
+                    .p(px(20.0))
+                    .gap(px(12.0))
+                    .bg(move || theme().background)
         .text_color(move || theme().foreground)
         // Header: identity + where the key comes from + Hide.
         .child(
@@ -673,12 +678,14 @@ pub fn App() -> impl IntoElement {
         )
         .child(
             text(if cfg!(target_os = "android") {
-                "Polls while the app is open. Background notifications are coming."
+                "The persistent notification keeps polling in the background."
             } else {
                 "Closing this window keeps the tray running. Quit from the tray menu."
             })
             .text_size(px(11.0))
             .text_color(move || theme().muted_foreground),
+        ),
+            ),
         )
 }
 
