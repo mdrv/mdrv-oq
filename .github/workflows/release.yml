@@ -24,7 +24,9 @@ jobs:
       - name: Install GTK 4 dev libraries
         run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -67,7 +69,9 @@ jobs:
       - name: Install Rust Android targets
         run: rustup target add aarch64-linux-android armv7-linux-androideabi
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
 
       - uses: Swatinem/rust-cache@v2
         with:

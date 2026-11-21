@@ -1,0 +1,5 @@
+# Pin: turso 0.8.3 fails to compile under newer rustc releases (E0308
+# future-compat break surfaced on CI's current stable), and the local
+# machine runs this version. Bump deliberately, with a turso upgrade.
+[toolchain]
+channel = "1.99.1"
