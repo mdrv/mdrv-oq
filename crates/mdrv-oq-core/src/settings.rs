@@ -16,6 +16,8 @@ pub const THRESHOLD_PCT: &str = "threshold_pct";
 /// `"1"`/`"0"`: show the reset time in tooltip/window/notification.
 pub const SHOW_RESET: &str = "show_reset";
 
+pub const APPEARANCE: &str = "appearance";
+
 /// Defaults, when the store has nothing (or the value is malformed).
 pub const DEFAULT_INTERVAL_SECS: i64 = 300;
 pub const DEFAULT_THRESHOLD_PCT: f64 = 90.0;

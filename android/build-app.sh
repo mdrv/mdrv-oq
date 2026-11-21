@@ -38,9 +38,11 @@ javac --release 11 -classpath "$PLATFORM" -d "$OUT/classes" \
     $(find "$OUT/classes/id" -name '*.class')
 mv "$OUT/classes.dex" "$OUT/classes2.dex"
 
-# 2. Manifest + assets.
+# 2. Resources (adaptive launcher icon), manifest + assets.
+"$BT/aapt2" compile --dir "$ROOT/android/res" -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$PLATFORM" \
     --manifest "$ROOT/android/AndroidManifest.xml" \
+    "$OUT/res.zip" \
     -A "$ROOT/android/assets"
 
 # 3. dex + the Rust lib (stored, page-aligned: extractNativeLibs=false).

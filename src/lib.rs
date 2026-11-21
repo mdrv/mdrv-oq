@@ -35,6 +35,8 @@ struct Cfg {
     interval_secs: i64,
     threshold_pct: f64,
     show_reset: bool,
+    /// "system" | "light" | "dark".
+    appearance: String,
     /// The key saved in the app, if any. Rendered only as its presence —
     /// never the value.
     settings_key: Option<String>,
@@ -46,6 +48,7 @@ impl Default for Cfg {
             interval_secs: settings::DEFAULT_INTERVAL_SECS,
             threshold_pct: settings::DEFAULT_THRESHOLD_PCT,
             show_reset: settings::DEFAULT_SHOW_RESET,
+            appearance: "system".to_owned(),
             settings_key: None,
         }
     }
@@ -60,10 +63,40 @@ fn load_cfg() -> Cfg {
             interval_secs: settings::interval_secs(s),
             threshold_pct: settings::threshold_pct(s),
             show_reset: settings::show_reset(s),
+            appearance: s
+                .get(settings::APPEARANCE)
+                .filter(|v| matches!(v.as_str(), "system" | "light" | "dark"))
+                .unwrap_or_else(|| "system".to_owned()),
             settings_key: s.get(settings::API_KEY),
         },
         None => Cfg::default(),
     }
+}
+
+/// Apply the saved color scheme to the whole app.
+fn apply_appearance(cfg: &Cfg) {
+    let appearance = match cfg.appearance.as_str() {
+        "light" => Appearance::Light,
+        "dark" => Appearance::Dark,
+        _ => Appearance::System,
+    };
+    set_color_scheme(appearance);
+}
+
+/// Cycle system -> light -> dark -> system.
+fn cycle_appearance(cfg: &Signal<Cfg>) {
+    let mut c = cfg.get();
+    c.appearance = match c.appearance.as_str() {
+        "system" => "light",
+        "light" => "dark",
+        _ => "system",
+    }
+    .to_owned();
+    if let Some(s) = SETTINGS.get() {
+        let _ = s.set(settings::APPEARANCE, Some(&c.appearance));
+    }
+    apply_appearance(&c);
+    cfg.set(c);
 }
 
 /// Prepares the window: it must not quit the app on close (the tray keeps
@@ -391,6 +424,7 @@ pub fn App() -> impl IntoElement {
                 }
             }
             cfg.set(load_cfg());
+            apply_appearance(&cfg.get());
             prepare_window();
             apply_tray(&state, &cfg, &busy);
             if cfg!(target_os = "android") {
@@ -440,6 +474,8 @@ pub fn App() -> impl IntoElement {
     let interval_val = cfg.clone();
     let interval_down = cfg.clone();
     let interval_up = cfg.clone();
+    let theme_val = cfg.clone();
+    let theme_chip = cfg.clone();
 
     view()
         .flex_1()
@@ -667,6 +703,14 @@ pub fn App() -> impl IntoElement {
                                 move || bump_interval(&cfg, true)
                             }),
                         ),
+                ))
+                .child(setting_row(
+                    "Theme",
+                    move || theme_val.get().appearance.clone(),
+                    chip("cycle", {
+                        let cfg = theme_chip.clone();
+                        move || cycle_appearance(&cfg)
+                    }),
                 ))
                 .child(
                     view()
