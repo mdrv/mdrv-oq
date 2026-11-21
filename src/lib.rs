@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use mdrv_oq_core::model::QuotaState;
+use mdrv_oq_core::service;
 use mdrv_oq_core::{
     api, key, render, thresholds,
     settings::{self, Settings},
@@ -361,6 +362,15 @@ pub fn App() -> impl IntoElement {
     let cfg = signal(Cfg::default());
     let busy = signal(false);
     let key_draft = signal(String::new());
+    // Ticks every second so the "Xs ago" / "until reset" texts keep
+    // moving between polls.
+    let tick = signal(0_u64);
+    {
+        let tick = tick.clone();
+        set_interval(Duration::from_secs(1), move || {
+            tick.update(|value| *value += 1);
+        });
+    }
 
     // Store, tray, hide, first poll, then the loop.
     {
@@ -383,10 +393,19 @@ pub fn App() -> impl IntoElement {
             cfg.set(load_cfg());
             prepare_window();
             apply_tray(&state, &cfg, &busy);
-            loop {
-                poll_once(state.clone(), cfg.clone(), busy.clone()).await;
-                let interval = cfg.get().interval_secs.clamp(30, 86_400) as u64;
-                timer(Duration::from_secs(interval)).await;
+            if cfg!(target_os = "android") {
+                // The Java foreground service owns polling; the UI only
+                // mirrors its state file. One poller, one clock.
+                loop {
+                    sync_service_state(&state);
+                    timer(Duration::from_secs(2)).await;
+                }
+            } else {
+                loop {
+                    poll_once(state.clone(), cfg.clone(), busy.clone()).await;
+                    let interval = cfg.get().interval_secs.clamp(30, 86_400) as u64;
+                    timer(Duration::from_secs(interval)).await;
+                }
             }
         });
     }
@@ -399,8 +418,10 @@ pub fn App() -> impl IntoElement {
     let origin_cfg = cfg.clone();
     let resets_state = state.clone();
     let resets_cfg = cfg.clone();
+    let resets_tick = tick.clone();
     let level_state = state.clone();
     let checked_state = state.clone();
+    let checked_tick = tick.clone();
     let status_state = state.clone();
     let status_cfg = cfg.clone();
     let tray_state = state.clone();
@@ -416,6 +437,9 @@ pub fn App() -> impl IntoElement {
     let save_cfg = cfg.clone();
     let clear_cfg = cfg.clone();
     let interval_cfg = cfg.clone();
+    let interval_val = cfg.clone();
+    let interval_down = cfg.clone();
+    let interval_up = cfg.clone();
 
     view()
         .flex_1()
@@ -530,6 +554,7 @@ pub fn App() -> impl IntoElement {
         .child(row(
             "Resets",
             move || {
+                let _ticking = resets_tick.get();
                 let s = resets_state.get();
                 let c = resets_cfg.get();
                 match (c.show_reset, s.next_reset_ms) {
@@ -553,6 +578,7 @@ pub fn App() -> impl IntoElement {
         .child(row(
             "Checked",
             move || {
+                let _ticking = checked_tick.get();
                 let s = checked_state.get();
                 if s.fetched_at_ms == 0 {
                     "never".into()
@@ -622,6 +648,25 @@ pub fn App() -> impl IntoElement {
                             apply_tray(&tray_state, &cfg, &tray_busy);
                         }
                     }),
+                ))
+                .child(setting_row(
+                    "Poll interval",
+                    move || interval_text(interval_val.get().interval_secs),
+                    view()
+                        .flex_row()
+                        .gap(px(6.0))
+                        .child(
+                            chip("\u{2212}", {
+                                let cfg = interval_down.clone();
+                                move || bump_interval(&cfg, false)
+                            }),
+                        )
+                        .child(
+                            chip("+", {
+                                let cfg = interval_up.clone();
+                                move || bump_interval(&cfg, true)
+                            }),
+                        ),
                 ))
                 .child(
                     view()
@@ -693,6 +738,40 @@ pub fn App() -> impl IntoElement {
 fn hex_bg(hex: &str) -> Hsla {
     let (h, s, l) = hsl_of(hex);
     hsla(h, s, l, 1.0)
+}
+
+/// Mirror the Android service's latest snapshot into the UI state.
+/// Absent file = keep whatever is showing (first run shows "waiting").
+fn sync_service_state(state: &Signal<QuotaState>) {
+    let Some(path) = service::state_file() else {
+        return;
+    };
+    let Ok(json) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let next = service::parse_state(&json);
+    if state.get() != next {
+        state.set(next);
+    }
+}
+
+/// Poll-interval presets; stepping moves to the next/previous rung.
+const INTERVALS: [i64; 5] = [60, 300, 600, 1800, 3600];
+
+fn bump_interval(cfg: &Signal<Cfg>, up: bool) {
+    let mut c = cfg.get();
+    let cur = c.interval_secs.clamp(60, 3600);
+    let next = if up {
+        INTERVALS.iter().find(|v| **v > cur)
+    } else {
+        INTERVALS.iter().rev().find(|v| **v < cur)
+    };
+    let Some(value) = next else { return };
+    c.interval_secs = *value;
+    if let Some(s) = SETTINGS.get() {
+        let _ = s.set(settings::INTERVAL_SECS, Some(&value.to_string()));
+    }
+    cfg.set(c);
 }
 
 fn bump_threshold(cfg: &Signal<Cfg>, delta: f64) {

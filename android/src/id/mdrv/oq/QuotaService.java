@@ -47,6 +47,11 @@ public class QuotaService extends Service {
     private volatile boolean stopped = false;
     private ScheduledFuture<?> task;
     private volatile long lastPollMs = 0L;
+    // Raw values from the last fetch, mirrored to state.json for the UI.
+    private volatile double lastPct = Double.NaN;
+    private volatile long lastResetMs = 0L;
+    private volatile String lastLevel = null;
+    private volatile String lastError = null;
 
     @Override
     public void onCreate() {
@@ -72,15 +77,12 @@ public class QuotaService extends Service {
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
-        long interval = intervalSecs();
-        // Repeated starts (app open, boot, adb) reschedule instead of
-        // stacking poll loops, and pick up a changed interval.
+        // Repeated starts (app open, boot, adb) restart the cycle instead
+        // of stacking loops, so an interval change applies right away.
         if (task != null) {
             task.cancel(false);
         }
-        executor.submit(this::poll);
-        task = executor.scheduleWithFixedDelay(
-                this::poll, interval, interval, TimeUnit.SECONDS);
+        executor.submit(this::cycle);
         return START_STICKY;
     }
 
@@ -111,6 +113,17 @@ public class QuotaService extends Service {
         return DEFAULT_INTERVAL_SECS;
     }
 
+    /// One poll, then reschedule itself — an interval change applies
+    /// after the current cycle instead of being stuck in a fixed grid.
+    private void cycle() {
+        if (stopped) {
+            return;
+        }
+        poll();
+        task = executor.schedule(
+                this::cycle, intervalSecs(), TimeUnit.SECONDS);
+    }
+
     private void poll() {
         if (stopped) {
             return;
@@ -118,40 +131,25 @@ public class QuotaService extends Service {
         try {
             NotificationManager nm = getSystemService(NotificationManager.class);
             lastPollMs = System.currentTimeMillis();
-            nm.notify(NOTIFICATION_ID,
-                    build(status() + "  \uD83D\uDD04 " + lastUpdateAge()));
+            String text = status();
+            writeStateFile();
+            nm.notify(NOTIFICATION_ID, build(text));
         } catch (Exception ignored) {
             // A dead notification manager should not kill the loop.
         }
     }
 
-    /// How long ago the last poll ran, coarse ("now", "2m", "3h", "1d").
-    private String lastUpdateAge() {
-        long seconds = Math.max(0,
-                (System.currentTimeMillis() - lastPollMs) / 1_000);
-        if (seconds < 60) {
-            return "now";
-        }
-        long minutes = seconds / 60;
-        if (minutes < 60) {
-            return minutes + "m";
-        }
-        long hours = minutes / 60;
-        if (hours < 24) {
-            return hours + "h";
-        }
-        return (hours / 24) + "d";
-    }
-
-    /// One fetch, rendered like the desktop tray line.
+    /// One fetch, rendered like the desktop tray line. Also stashes the
+    /// raw values for `writeStateFile` (the UI mirrors them instead of
+    /// polling on its own — one poller, one clock).
     private String status() {
         String key = readSetting("api_key");
         if (key == null || key.trim().isEmpty()) {
-            return "no API key \u2014 open the app to set one";
+            return fail("no API key \u2014 open the app to set one");
         }
         String body = fetch(key.trim());
         if (body == null) {
-            return "fetch failed";
+            return fail("fetch failed");
         }
         try {
             JSONObject data = new JSONObject(body).getJSONObject("data");
@@ -167,18 +165,66 @@ public class QuotaService extends Service {
                 resetMs = limit.optLong("nextResetTime");
                 break;
             }
-            if (percentage == null) {
-                return "\u2026";
+            if (percentage == null || percentage.isNaN()) {
+                return noData();
             }
+            lastPct = percentage;
+            lastResetMs = resetMs != null ? resetMs : 0L;
+            lastLevel = data.optString("level", null);
+            lastError = null;
             StringBuilder line = new StringBuilder("GLM ")
                     .append(Math.round(percentage)).append("%");
-            if (resetMs != null && resetMs > 0
-                    && !"0".equals(readSetting("show_reset"))) {
-                line.append(" \u00b7 resets ").append(clock(resetMs));
+            if (lastResetMs > 0 && !"0".equals(readSetting("show_reset"))) {
+                line.append(" \u00b7 \u267B\uFE0F ").append(clock(lastResetMs));
             }
             return line.toString();
         } catch (Exception e) {
-            return "\u2716 " + e.getMessage();
+            return fail("\u2716 " + e.getMessage());
+        }
+    }
+
+    /// No TOKENS_LIMIT row yet: clear any sample, no error either.
+    private String noData() {
+        lastPct = Double.NaN;
+        lastResetMs = 0L;
+        lastLevel = null;
+        lastError = null;
+        return "\u2026";
+    }
+
+    /// Record an error as the latest state, clearing any sample.
+    private String fail(String message) {
+        lastPct = Double.NaN;
+        lastResetMs = 0L;
+        lastLevel = null;
+        lastError = message;
+        return message;
+    }
+
+    /// Mirror the snapshot for the Rust UI. Atomic-ish via rename.
+    private void writeStateFile() {
+        try {
+            java.io.File dir = new java.io.File(getFilesDir(), "state");
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return;
+            }
+            JSONObject o = new JSONObject();
+            o.put("percentage", Double.isNaN(lastPct) ? null : lastPct);
+            o.put("next_reset_ms", lastResetMs > 0 ? lastResetMs : null);
+            o.put("level", lastLevel);
+            o.put("error",
+                    lastError == null || lastError.isEmpty() ? null : lastError);
+            o.put("fetched_at_ms", lastPollMs);
+            java.io.File tmp = new java.io.File(dir, "state.json.tmp");
+            try (java.io.FileWriter w = new java.io.FileWriter(tmp)) {
+                w.write(o.toString());
+            }
+            java.io.File out = new java.io.File(dir, "state.json");
+            if (out.exists() && !out.delete()) {
+                return;
+            }
+            tmp.renameTo(out);
+        } catch (Exception ignored) {
         }
     }
 
@@ -248,6 +294,12 @@ public class QuotaService extends Service {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("mdrv-oq")
                 .setContentText(text)
+                // The last-updated indicator: SystemUI renders a stopwatch
+                // from the poll time itself, so it keeps ticking even when
+                // MIUI/Doze throttles this process (a repost-based age
+                // label lagged minutes behind on a Poco F7).
+                .setWhen(Math.max(lastPollMs, 1L))
+                .setUsesChronometer(true)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true);
         Intent open = getPackageManager().getLaunchIntentForPackage(

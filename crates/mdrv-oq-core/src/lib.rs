@@ -7,5 +7,6 @@ pub mod api;
 pub mod key;
 pub mod model;
 pub mod render;
+pub mod service;
 pub mod settings;
 pub mod thresholds;
