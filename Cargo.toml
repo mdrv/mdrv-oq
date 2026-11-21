@@ -4,8 +4,9 @@ resolver = "2"
 
 [package]
 name = "mdrv-oq"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+license = "MIT"
 publish = false
 
 [dependencies]
@@ -25,13 +26,13 @@ nsh-platform-macos = { version = "0.6.0", default-features = false, features = [
 nsh-platform-windows = { version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg"] }
 
 # Colored SVG tray icons (upstream treats every SVG as a black/white
-# panel-tinted template); branch mdrv-oq/tray-api in the local clone.
-# The whole nsh chain must be patched together: the clone's crates use
-# workspace path deps, so patching only the platform crate would create
-# a second, distinct nsh-core and break the Component impl.
+# panel-tinted template); fixed on the mdrv-oq/tray-api branch of the
+# public fork. The whole nsh chain must be patched together: nsh's
+# crates use workspace deps, so patching only the platform crate would
+# create a second, distinct nsh-core and break the Component impl.
 [patch.crates-io]
-nsh-core = { path = "/g/_ext/nsh/crates/nsh-core" }
-nsh-base = { path = "/g/_ext/nsh/crates/nsh-base" }
-nsh-engine = { path = "/g/_ext/nsh/crates/nsh-engine" }
-nsh-macros = { path = "/g/_ext/nsh/crates/nsh-macros" }
-nsh-platform-linux = { path = "/g/_ext/nsh/crates/nsh-platform-linux" }
+nsh-core = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
+nsh-base = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
+nsh-engine = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
+nsh-macros = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
+nsh-platform-linux = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }

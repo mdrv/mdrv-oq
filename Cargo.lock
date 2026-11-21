@@ -2640,7 +2640,7 @@ checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
 
 [[package]]
 name = "mdrv-oq"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "env_logger",
  "mdrv-oq-core",
@@ -2654,7 +2654,7 @@ dependencies = [
 
 [[package]]
 name = "mdrv-oq-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -2868,6 +2868,7 @@ dependencies = [
 [[package]]
 name = "nsh-base"
 version = "0.6.0"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#f49a70bcb19a1d87082430cbad254525f6f89ff0"
 dependencies = [
  "chrono",
  "html5ever",
@@ -2897,6 +2898,7 @@ dependencies = [
 [[package]]
 name = "nsh-core"
 version = "0.6.0"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#f49a70bcb19a1d87082430cbad254525f6f89ff0"
 dependencies = [
  "cap-std",
  "chrono",
@@ -2932,6 +2934,7 @@ dependencies = [
 [[package]]
 name = "nsh-engine"
 version = "0.6.0"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#f49a70bcb19a1d87082430cbad254525f6f89ff0"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -2957,6 +2960,7 @@ dependencies = [
 [[package]]
 name = "nsh-macros"
 version = "0.6.0"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#f49a70bcb19a1d87082430cbad254525f6f89ff0"
 dependencies = [
  "imagesize 0.15.0",
  "proc-macro2",
@@ -2992,6 +2996,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-linux"
 version = "0.6.0"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#f49a70bcb19a1d87082430cbad254525f6f89ff0"
 dependencies = [
  "crossbeam-channel",
  "gtk4",
@@ -3060,6 +3065,7 @@ dependencies = [
 [[package]]
 name = "nsh-updater"
 version = "0.6.0"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#f49a70bcb19a1d87082430cbad254525f6f89ff0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -4269,7 +4275,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

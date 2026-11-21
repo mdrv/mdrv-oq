@@ -11,7 +11,7 @@ set -e
 
 SDK=${ANDROID_HOME:-$HOME/Android/Sdk}
 BT=$(ls -d "$SDK"/build-tools/* | sort | tail -1)
-PLATFORM="$SDK/platforms/android-35/android.jar"
+PLATFORM=$(ls -d "$SDK"/platforms/android-* | sort -V | tail -1)/android.jar
 RUNTIME="$HOME/.nsh/runtime/android/release"
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 LIB="$ROOT/.nsh/rust/android-rust-release/lib/arm64-v8a/libnsh.so"

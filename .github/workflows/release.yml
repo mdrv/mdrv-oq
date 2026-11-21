@@ -1,0 +1,116 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  desktop:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            rust-target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install GTK 4 dev libraries
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust-target }}
+
+      - name: Check versions match the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          grep -q "^version = \"$V\"" Cargo.toml
+          grep -q "^version = \"$V\"" crates/mdrv-oq-core/Cargo.toml
+          grep -q "\"version\": \"$V\"" nsh.json
+
+      - name: Install nsh CLI
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
+
+      - name: Package
+        run: nsh package --target linux
+
+      - name: Pack tarball
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          test -d ".nsh/out/mdrv-oq"
+          tar -czf "mdrv-oq-v${V}-linux-${{ matrix.rust-target }}.tar.gz" \
+              -C .nsh/out mdrv-oq
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-linux-${{ matrix.rust-target }}
+          path: mdrv-oq-v*-linux-*.tar.gz
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust Android targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+
+      - name: Install nsh CLI
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh
+          echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
+
+      - name: Build the Rust app (libnsh.so)
+        run: nsh package --target android
+        # The runner ships the Android SDK (ANDROID_HOME) with an NDK;
+        # the default --abi is arm64-v8a + armeabi-v7a.
+
+      - name: Assemble the FGS host APK
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          sh android/build-app.sh
+          cp .nsh/out/mdrv-oq-fgs.apk "mdrv-oq-v${V}-android.apk"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-android
+          path: mdrv-oq-v*-android.apk
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: SHA256SUMS
+        working-directory: dist
+        run: ls | grep -v '^SHA256SUMS.txt$' | xargs sha256sum > SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
