@@ -23,12 +23,12 @@ nsh-platform-linux = { version = "0.6.0", default-features = false, features = [
 nsh-platform-macos = { version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-nsh-platform-windows = { version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg"] }
+nsh-platform-windows = { version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg", "net"] }
 
 # Colored SVG tray icons (upstream treats every SVG as a black/white
-# panel-tinted template); fixed on the mdrv-oq/tray-api branch of the
-# public fork. The whole nsh chain must be patched together: nsh's
-# crates use workspace deps, so patching only the platform crate would
+# panel-tinted template; fixed for Linux and Windows on the mdrv-oq/tray-api
+# branch of the public fork). The whole nsh chain must be patched together:
+# nsh's crates use workspace deps, so patching only the platform crate would
 # create a second, distinct nsh-core and break the Component impl.
 [patch.crates-io]
 nsh-core = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
@@ -36,3 +36,4 @@ nsh-base = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
 nsh-engine = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
 nsh-macros = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
 nsh-platform-linux = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }
+nsh-platform-windows = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api" }

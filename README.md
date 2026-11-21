@@ -11,8 +11,8 @@
 > want a supported quota indicator, use `oc-quota` directly.
 
 A GLM / Z.AI Coding Plan quota monitor, built as a native app on
-[nsh](https://github.com/longbridge/nsh): a tray app on Linux (colored
-percentage icon in the panel) and an Android app with a persistent
+[nsh](https://github.com/longbridge/nsh): a tray app on Linux and Windows
+(colored percentage icon) and an Android app with a persistent
 foreground-service notification.
 
 ```
@@ -46,6 +46,9 @@ API key (overrides env / OpenCode) Save  Clear
 - **Linux tray**: icon renders the current percentage in pixels —
   green → amber (≥ 80%) → red (≥ threshold); full details in the tooltip;
   menu with Open / Refresh now / Quit; clicking opens the dashboard.
+- **Windows tray**: the same colored percentage icon in the notification
+  area; a primary click opens the dashboard, the menu is the secondary
+  click.
 - **Android**: tapping the launcher icon opens the dashboard; a
   foreground service (`specialUse`) keeps a silent ongoing notification —
   `GLM 27% · ♻️ 20:35:16` with a SystemUI chronometer for the last-poll
@@ -97,6 +100,19 @@ The nsh CLI (only needed for packaging, not for `cargo run`) installs with
 Release tarballs from CI are built with `nsh package --target linux` and
 need `gtk4` + `pango` at runtime.
 
+### Windows
+
+Build from source (no system packages needed; Rust 1.99.1+):
+
+```sh
+git clone https://github.com/mdrv/mdrv-oq
+cd mdrv-oq
+cargo run --release
+```
+
+The icon keeps its colors in the notification area; the tooltip carries the
+details. Releases currently ship Linux and Android artifacts only.
+
 ## Settings
 
 | Setting         | Values                   | Notes                                              |
@@ -111,6 +127,7 @@ need `gtk4` + `pango` at runtime.
 
 - Linux: `~/.local/state/mdrv-oq/settings.db` (Turso/SQLite) — override
   with `MDRV_OQ_STATE_DIR`.
+- Windows: `%LOCALAPPDATA%\mdrv-oq\settings.db` — same override.
 - Android: `files/state/` inside the app's data dir — `settings.db` shared
   between the Rust UI and the Java service, plus `state.json` written by
   the service for the UI to mirror.
@@ -124,11 +141,13 @@ service (`android/`) polls on top of the same settings database — assembled
 without Gradle by `android/build-app.sh` (`aapt2` / `d8` / `zipalign` /
 `apksigner`).
 
-The Linux tray uses a patched nsh ([`mdrv-oq/tray-api`
+The desktop tray uses a patched nsh
+([`mdrv-oq/tray-api`
 branch](https://github.com/mdrv/nsh/tree/mdrv-oq/tray-api) of a public
 fork, wired in via `[patch.crates-io]`): upstream treats every SVG tray
-icon as a monochrome template; the patch keeps colored SVGs colored. It
-has been [offered upstream](https://github.com/longbridge/nsh).
+icon as a monochrome template; the patch keeps colored SVGs colored, on
+Linux and Windows. It has been
+[offered upstream](https://github.com/longbridge/nsh).
 
 ## License
 

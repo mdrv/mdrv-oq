@@ -64,10 +64,15 @@ fn opencode_data_dir() -> Option<PathBuf> {
 }
 
 fn home_dir() -> Option<PathBuf> {
-    match std::env::var("HOME") {
-        Ok(h) if !h.trim().is_empty() => Some(PathBuf::from(h)),
-        _ => None,
+    // Windows native processes set no HOME; USERPROFILE is the same dir.
+    for var in ["HOME", "USERPROFILE"] {
+        if let Ok(h) = std::env::var(var)
+            && !h.trim().is_empty()
+        {
+            return Some(PathBuf::from(h));
+        }
     }
+    None
 }
 
 fn nonempty(s: &Option<String>) -> Option<String> {
