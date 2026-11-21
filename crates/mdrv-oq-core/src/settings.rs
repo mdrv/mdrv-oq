@@ -129,6 +129,14 @@ pub fn show_reset(s: &Settings) -> bool {
 /// `$XDG_STATE_HOME/mdrv-oq/settings.db`, defaulting to
 /// `~/.local/state/mdrv-oq/settings.db`.
 pub fn default_db_path() -> PathBuf {
+    // Android: no HOME/TMPDIR and cwd "/" — find the app's private files
+    // dir from the package name in /proc/self/cmdline, then require it to
+    // be writable before trusting it.
+    if cfg!(target_os = "android") {
+        if let Some(path) = android_files_state_dir() {
+            return path.join("mdrv-oq").join("settings.db");
+        }
+    }
     let base = match std::env::var("MDRV_OQ_STATE_DIR") {
         Ok(s) if !s.trim().is_empty() => PathBuf::from(s),
         _ => match std::env::var("XDG_STATE_HOME") {
@@ -140,6 +148,32 @@ pub fn default_db_path() -> PathBuf {
         },
     };
     base.join("mdrv-oq").join("settings.db")
+}
+
+/// `/data/data/<package>/files/state` on Android, from the package name in
+/// `/proc/self/cmdline`; `None` anywhere along the way or when the
+/// directory cannot be created (then the caller falls back).
+#[cfg(target_os = "android")]
+fn android_files_state_dir() -> Option<PathBuf> {
+    let cmdline = std::fs::read("/proc/self/cmdline").ok()?;
+    let package = String::from_utf8_lossy(&cmdline)
+        .split('\0')
+        .next()?
+        .to_owned();
+    if package.is_empty() || package.contains('/') || package.starts_with('.') {
+        return None;
+    }
+    let dir = PathBuf::from("/data/data")
+        .join(package)
+        .join("files/state");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+/// Not Android: no private files dir, always fall back.
+#[cfg(not(target_os = "android"))]
+fn android_files_state_dir() -> Option<PathBuf> {
+    None
 }
 
 #[cfg(test)]

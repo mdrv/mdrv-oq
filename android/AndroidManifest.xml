@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The FGS host: the nsh runtime's manifest (AppActivity runs the Rust
+     UI) plus our foreground service. Built with aapt2 directly; see
+     build-app.sh. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="id.mdrv.oq"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/>
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+
+    <application
+        android:label="mdrv-oq"
+        android:supportsRtl="true"
+        android:extractNativeLibs="false"
+        android:enableOnBackInvokedCallback="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+        <!-- The nsh runtime runs the Rust root from libnsh.so. -->
+        <meta-data android:name="com.longbridge.nsh.RUST" android:value="true"/>
+
+        <provider
+            android:name="com.longbridge.nsh.FilesProvider"
+            android:exported="false"
+            android:authorities="id.mdrv.oq.files"
+            android:grantUriPermissions="true"/>
+
+        <activity
+            android:name="com.longbridge.nsh.AppActivity"
+            android:exported="true"
+            android:configChanges="fontScale|mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|colorMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- Persistent quota notification; polls while the UI is closed. -->
+        <service
+            android:name="id.mdrv.oq.QuotaService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Polls the user's coding-plan quota to keep its persistent notification current"/>
+        </service>
+    </application>
+</manifest>
