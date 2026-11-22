@@ -211,6 +211,24 @@ fn tip_changed(state: &Signal<QuotaState>, cfg: &Signal<Cfg>) -> bool {
     LAST_TIP.with(|last| *last.borrow() != tip)
 }
 
+thread_local! {
+    /// Android refresh poke: the snapshot's fetched_at_ms seen at press
+    /// time (busy releases when the service writes a different one) and
+    /// the press time (busy releases after 30 s regardless — the
+    /// service may be dead or throttled).
+    static POKE_BASE: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+    static POKE_AT: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+}
+
+/// Android: record the poke and ask the foreground service — the sole
+/// poller — for an out-of-band fetch via its marker file.
+fn poke_service(state: &Signal<QuotaState>, busy: &Signal<bool>) {
+    POKE_BASE.with(|c| c.set(state.get().fetched_at_ms));
+    POKE_AT.with(|c| c.set(unix_ms() as i64));
+    service::poke_refresh();
+    busy.set(true);
+}
+
 /// The tray icon + title + tooltip + menu, re-set after every change
 /// worth showing. The tile icon carries the percent everywhere; the title
 /// run adds it as text on panels that show SNI labels; a primary click
@@ -433,12 +451,38 @@ fn setting_row(
         .child(controls)
 }
 
+/// Android only: the POST_NOTIFICATIONS grant state and a chip that
+/// asks for it. The system's answer (also after the user answers the
+/// dialog) updates the row through the signal.
+fn notification_row(perm: Signal<String>) -> impl IntoElement {
+    let chip_perm = perm.clone();
+    setting_row(
+        "Notifications",
+        move || match perm.get().as_str() {
+            "granted" => "granted".to_owned(),
+            "denied" => "denied".to_owned(),
+            "unavailable" => "unavailable".to_owned(),
+            _ => "not asked".to_owned(),
+        },
+        chip("request", move || {
+            let perm = chip_perm.clone();
+            spawn(async move {
+                let p = request_notification_permission().await;
+                perm.set(p.as_str().to_owned());
+            });
+        }),
+    )
+}
+
 #[component]
 pub fn App() -> impl IntoElement {
     let state = signal(QuotaState::fresh());
     let cfg = signal(Cfg::default());
     let busy = signal(false);
     let key_draft = signal(String::new());
+    // The POST_NOTIFICATIONS grant state, as `NotificationPermission::
+    // as_str` ("granted", "denied", …); Android's settings row shows it.
+    let notif_perm = signal(String::new());
     // Ticks every second so the "Xs ago" / "until reset" texts keep
     // moving between polls.
     let tick = signal(0_u64);
@@ -453,6 +497,17 @@ pub fn App() -> impl IntoElement {
             if tip_changed(&state, &cfg) {
                 apply_tray(&state, &cfg, &busy);
             }
+            // Android: a refresh poke is in flight until the service's
+            // snapshot moves past the one seen at press time — or 30 s
+            // pass without that (dead/throttled service).
+            if cfg!(target_os = "android") && busy.get() {
+                let done = state.get().fetched_at_ms
+                    != POKE_BASE.with(|c| c.get())
+                    || unix_ms() as i64 - POKE_AT.with(|c| c.get()) > 30_000;
+                if done {
+                    busy.set(false);
+                }
+            }
         });
     }
 
@@ -461,6 +516,7 @@ pub fn App() -> impl IntoElement {
         let state = state.clone();
         let cfg = cfg.clone();
         let busy = busy.clone();
+        let notif_perm = notif_perm.clone();
         spawn(async move {
             if SETTINGS.get().is_none() {
                 match settings::Settings::open(&settings::default_db_path()) {
@@ -478,6 +534,16 @@ pub fn App() -> impl IntoElement {
             apply_appearance(&cfg.get());
             prepare_window();
             apply_tray(&state, &cfg, &busy);
+            if cfg!(target_os = "android") {
+                // Seed the permission row; its chip re-asks. A separate
+                // task: an unanswered query must not stall the loop
+                // below.
+                let np = notif_perm.clone();
+                spawn(async move {
+                    let p = notification_permission().await;
+                    np.set(p.as_str().to_owned());
+                });
+            }
             if cfg!(target_os = "android") {
                 // The Java foreground service owns polling; the UI only
                 // mirrors its state file. One poller, one clock.
@@ -527,6 +593,151 @@ pub fn App() -> impl IntoElement {
     let interval_up = cfg.clone();
     let theme_val = cfg.clone();
     let theme_chip = cfg.clone();
+
+    // The settings card, built first so Android can append its
+    // POST_NOTIFICATIONS row (nothing to grant on desktop).
+    let mut settings_card = view()
+        .flex_col()
+        .w_full()
+        .gap(px(10.0))
+        .p(px(12.0))
+        .rounded(px(10.0))
+        .bg(move || theme().card)
+        .child(
+            text("Settings")
+                .text_size(px(13.0))
+                .text_color(move || theme().muted_foreground),
+        )
+        .child(
+            setting_row(
+                "Alert threshold",
+                move || render::pct_text(threshold_cfg.get().threshold_pct),
+                view()
+                    .flex_row()
+                    .gap(px(6.0))
+                    .child(
+                        chip("\u{2212}", {
+                            let cfg = threshold_cfg.clone();
+                            move || bump_threshold(&cfg, -5.0)
+                        }),
+                    )
+                    .child(
+                        chip("+", {
+                            let cfg = threshold_cfg.clone();
+                            move || bump_threshold(&cfg, 5.0)
+                        }),
+                    ),
+            ),
+        )
+        .child(setting_row(
+            "Reset time",
+            move || {
+                if reset_cfg.get().show_reset {
+                    "shown".to_string()
+                } else {
+                    "hidden".to_string()
+                }
+            },
+            chip("toggle", {
+                let cfg = reset_cfg.clone();
+                let tray_state = tray_state.clone();
+                let tray_busy = tray_busy.clone();
+                move || {
+                    let mut c = cfg.get();
+                    c.show_reset = !c.show_reset;
+                    if let Some(s) = SETTINGS.get() {
+                        let _ = s.set(
+                            settings::SHOW_RESET,
+                            Some(if c.show_reset { "1" } else { "0" }),
+                        );
+                    }
+                    cfg.set(c);
+                    apply_tray(&tray_state, &cfg, &tray_busy);
+                }
+            }),
+        ))
+        .child(setting_row(
+            "Poll interval",
+            move || interval_text(interval_val.get().interval_secs),
+            view()
+                .flex_row()
+                .gap(px(6.0))
+                .child(
+                    chip("\u{2212}", {
+                        let cfg = interval_down.clone();
+                        move || bump_interval(&cfg, false)
+                    }),
+                )
+                .child(
+                    chip("+", {
+                        let cfg = interval_up.clone();
+                        move || bump_interval(&cfg, true)
+                    }),
+                ),
+        ))
+        .child(setting_row(
+            "Theme",
+            move || theme_val.get().appearance.clone(),
+            chip("cycle", {
+                let cfg = theme_chip.clone();
+                move || cycle_appearance(&cfg)
+            }),
+        ))
+        .child(
+            view()
+                .flex_row()
+                .w_full()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    input()
+                        .flex_1()
+                        .value(key_draft.clone())
+                        .placeholder("API key (overrides env / OpenCode)")
+                        .masked(true)
+                        .on_change(move |v: &str| key_draft.set(v.to_string())),
+                )
+                .child(
+                    chip("Save", {
+                        let key_draft = save_key_draft.clone();
+                        let cfg = save_cfg.clone();
+                        move || {
+                            let mut v = key_draft.get();
+                            mdrv_oq_core::model::one_line(&mut v, 200);
+                            let v = v.trim().to_string();
+                            if let Some(s) = SETTINGS.get() {
+                                let _ = s.set(
+                                    settings::API_KEY,
+                                    if v.is_empty() { None } else { Some(&v) },
+                                );
+                            }
+                            key_draft.set(String::new());
+                            let c = load_cfg();
+                            cfg.set(c);
+                        }
+                    }),
+                )
+                .child(
+                    chip("Clear", {
+                        let cfg = clear_cfg.clone();
+                        move || {
+                            if let Some(s) = SETTINGS.get() {
+                                let _ = s.set(settings::API_KEY, None);
+                            }
+                            let c = load_cfg();
+                            cfg.set(c);
+                        }
+                    }),
+                ),
+        )
+        .child(
+            text("Empty key = ZAI_API_KEY, or OpenCode's stored credentials")
+                .text_size(px(11.0))
+                .text_color(move || theme().muted_foreground),
+        );
+    if cfg!(target_os = "android") {
+        settings_card = settings_card.child(notification_row(notif_perm.clone()));
+    }
 
     view()
         .flex_1()
@@ -662,8 +873,8 @@ pub fn App() -> impl IntoElement {
         .child(row("Interval", {
             move || interval_text(interval_cfg.get().interval_secs)
         }))
-        // Checked + manual refresh. Android: the foreground service owns
-        // polling (one poller), so the chip waits for its service poke.
+        // Checked + manual refresh. On Android the chip pokes the
+        // foreground service (the sole poller) with a marker file.
         .child(
             view()
                 .flex_row()
@@ -695,9 +906,7 @@ pub fn App() -> impl IntoElement {
                             })
                             .text_size(px(13.0)),
                         );
-                    if cfg!(target_os = "android") {
-                        value
-                    } else {
+                    {
                         let refresh_state = state.clone();
                         let refresh_cfg = cfg.clone();
                         let refresh_busy = busy.clone();
@@ -715,159 +924,28 @@ pub fn App() -> impl IntoElement {
                                 if refresh_guard.get() {
                                     return;
                                 }
-                                let st = refresh_state.clone();
-                                let cf = refresh_cfg.clone();
-                                let bz = refresh_busy.clone();
-                                spawn(async move {
-                                    poll_once(st, cf, bz).await;
-                                });
+                                if cfg!(target_os = "android") {
+                                    // The service is the sole poller: drop
+                                    // it a marker and stay busy until its
+                                    // snapshot moves.
+                                    let st = refresh_state.clone();
+                                    let bz = refresh_busy.clone();
+                                    poke_service(&st, &bz);
+                                } else {
+                                    let st = refresh_state.clone();
+                                    let cf = refresh_cfg.clone();
+                                    let bz = refresh_busy.clone();
+                                    spawn(async move {
+                                        poll_once(st, cf, bz).await;
+                                    });
+                                }
                             },
                         ))
                     }
                 }),
         )
         // Settings.
-        .child(
-            view()
-                .flex_col()
-                .w_full()
-                .gap(px(10.0))
-                .p(px(12.0))
-                .rounded(px(10.0))
-                .bg(move || theme().card)
-                .child(
-                    text("Settings")
-                        .text_size(px(13.0))
-                        .text_color(move || theme().muted_foreground),
-                )
-                .child(
-                    setting_row(
-                        "Alert threshold",
-                        move || render::pct_text(threshold_cfg.get().threshold_pct),
-                        view()
-                            .flex_row()
-                            .gap(px(6.0))
-                            .child(
-                                chip("\u{2212}", {
-                                    let cfg = threshold_cfg.clone();
-                                    move || bump_threshold(&cfg, -5.0)
-                                }),
-                            )
-                            .child(
-                                chip("+", {
-                                    let cfg = threshold_cfg.clone();
-                                    move || bump_threshold(&cfg, 5.0)
-                                }),
-                            ),
-                    ),
-                )
-                .child(setting_row(
-                    "Reset time",
-                    move || {
-                        if reset_cfg.get().show_reset {
-                            "shown".to_string()
-                        } else {
-                            "hidden".to_string()
-                        }
-                    },
-                    chip("toggle", {
-                        let cfg = reset_cfg.clone();
-                        let tray_state = tray_state.clone();
-                        let tray_busy = tray_busy.clone();
-                        move || {
-                            let mut c = cfg.get();
-                            c.show_reset = !c.show_reset;
-                            if let Some(s) = SETTINGS.get() {
-                                let _ = s.set(
-                                    settings::SHOW_RESET,
-                                    Some(if c.show_reset { "1" } else { "0" }),
-                                );
-                            }
-                            cfg.set(c);
-                            apply_tray(&tray_state, &cfg, &tray_busy);
-                        }
-                    }),
-                ))
-                .child(setting_row(
-                    "Poll interval",
-                    move || interval_text(interval_val.get().interval_secs),
-                    view()
-                        .flex_row()
-                        .gap(px(6.0))
-                        .child(
-                            chip("\u{2212}", {
-                                let cfg = interval_down.clone();
-                                move || bump_interval(&cfg, false)
-                            }),
-                        )
-                        .child(
-                            chip("+", {
-                                let cfg = interval_up.clone();
-                                move || bump_interval(&cfg, true)
-                            }),
-                        ),
-                ))
-                .child(setting_row(
-                    "Theme",
-                    move || theme_val.get().appearance.clone(),
-                    chip("cycle", {
-                        let cfg = theme_chip.clone();
-                        move || cycle_appearance(&cfg)
-                    }),
-                ))
-                .child(
-                    view()
-                        .flex_row()
-                        .w_full()
-                        .items_center()
-                        .gap(px(6.0))
-                        .child(
-                            input()
-                                .flex_1()
-                                .value(key_draft.clone())
-                                .placeholder("API key (overrides env / OpenCode)")
-                                .masked(true)
-                                .on_change(move |v: &str| key_draft.set(v.to_string())),
-                        )
-                        .child(
-                            chip("Save", {
-                                let key_draft = save_key_draft.clone();
-                                let cfg = save_cfg.clone();
-                                move || {
-                                    let mut v = key_draft.get();
-                                    mdrv_oq_core::model::one_line(&mut v, 200);
-                                    let v = v.trim().to_string();
-                                    if let Some(s) = SETTINGS.get() {
-                                        let _ = s.set(
-                                            settings::API_KEY,
-                                            if v.is_empty() { None } else { Some(&v) },
-                                        );
-                                    }
-                                    key_draft.set(String::new());
-                                    let c = load_cfg();
-                                    cfg.set(c);
-                                }
-                            }),
-                        )
-                        .child(
-                            chip("Clear", {
-                                let cfg = clear_cfg.clone();
-                                move || {
-                                    if let Some(s) = SETTINGS.get() {
-                                        let _ = s.set(settings::API_KEY, None);
-                                    }
-                                    let c = load_cfg();
-                                    cfg.set(c);
-                                }
-                            }),
-                        ),
-                )
-                .child(
-                    text("Empty key = ZAI_API_KEY, or OpenCode's stored credentials")
-                        .text_size(px(11.0))
-                        .text_color(move || theme().muted_foreground),
-                ),
-        )
+        .child(settings_card)
         .child(
             text(if cfg!(target_os = "android") {
                 "The persistent notification keeps polling in the background."
