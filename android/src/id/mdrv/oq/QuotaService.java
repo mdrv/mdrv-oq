@@ -18,6 +18,7 @@ import android.content.pm.ServiceInfo;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.IBinder;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -122,11 +123,18 @@ public class QuotaService extends Service {
         if (stopped) {
             return;
         }
-        boolean poked = consumeRefreshMarker();
-        boolean due = System.currentTimeMillis() - lastPollMs
-                >= intervalSecs() * 1000L;
-        if (due || poked) {
-            poll();
+        try {
+            boolean poked = consumeRefreshMarker();
+            boolean due = System.currentTimeMillis() - lastPollMs
+                    >= intervalSecs() * 1000L;
+            if (due || poked) {
+                poll();
+            }
+        } catch (Throwable t) {
+            // A thrown tick would silently kill scheduleWithFixedDelay's
+            // whole schedule (the future just completes exceptionally,
+            // nothing logs) — surface it instead.
+            Log.w("OqService", "tick failed", t);
         }
     }
 
@@ -150,8 +158,10 @@ public class QuotaService extends Service {
             String text = status();
             writeStateFile();
             nm.notify(NOTIFICATION_ID, build(text));
-        } catch (Exception ignored) {
+            Log.i("OqService", "poll ok: " + text);
+        } catch (Exception e) {
             // A dead notification manager should not kill the loop.
+            Log.w("OqService", "poll failed", e);
         }
     }
 
@@ -291,6 +301,8 @@ public class QuotaService extends Service {
             cursor.close();
             return value;
         } catch (Exception e) {
+            Log.w("OqService",
+                    "readSetting(" + key + ") failed", e);
             return null;
         } finally {
             if (db != null) {

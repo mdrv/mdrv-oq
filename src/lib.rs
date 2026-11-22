@@ -474,6 +474,16 @@ fn notification_row(perm: Signal<String>) -> impl IntoElement {
     )
 }
 
+/// The plain message of a host-call error (the host's rejection text).
+fn js_error_message(e: nsh_core::element::JsError) -> String {
+    match e {
+        nsh_core::element::JsError::Type(m)
+        | nsh_core::element::JsError::Range(m)
+        | nsh_core::element::JsError::Error(m) => m,
+        nsh_core::element::JsError::Fields(f) => f.message,
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoElement {
     let state = signal(QuotaState::fresh());
@@ -483,6 +493,12 @@ pub fn App() -> impl IntoElement {
     // The POST_NOTIFICATIONS grant state, as `NotificationPermission::
     // as_str` ("granted", "denied", …); Android's settings row shows it.
     let notif_perm = signal(String::new());
+    // The key-reveal flow: set while the device-credential check runs,
+    // a note for its outcome, and the unix-ms deadline when the draft
+    // stops showing the revealed key.
+    let revealing = signal(false);
+    let reveal_note = signal(String::new());
+    let reveal_until = signal(0_i64);
     // Ticks every second so the "Xs ago" / "until reset" texts keep
     // moving between polls.
     let tick = signal(0_u64);
@@ -491,6 +507,8 @@ pub fn App() -> impl IntoElement {
         let state = state.clone();
         let cfg = cfg.clone();
         let busy = busy.clone();
+        let key_draft = key_draft.clone();
+        let reveal_until = reveal_until.clone();
         set_interval(Duration::from_secs(1), move || {
             tick.update(|value| *value += 1);
             // Keep the tray tooltip's "ago" counting between polls.
@@ -507,6 +525,12 @@ pub fn App() -> impl IntoElement {
                 if done {
                     busy.set(false);
                 }
+            }
+            // The revealed key lives in the draft only until the
+            // deadline: clear the input (masked again) when it passes.
+            if reveal_until.get() != 0 && unix_ms() as i64 >= reveal_until.get() {
+                reveal_until.set(0);
+                key_draft.set(String::new());
             }
         });
     }
@@ -593,6 +617,60 @@ pub fn App() -> impl IntoElement {
     let interval_up = cfg.clone();
     let theme_val = cfg.clone();
     let theme_chip = cfg.clone();
+    let key_masked = reveal_until.clone();
+
+    // Reveal the stored key: on Android behind the device credential
+    // (the "confirm-identity" host handler), straight on desktop. The
+    // key lands in the draft input for 30 s, then the tick clears it.
+    let reveal_ = {
+        let cfg = cfg.clone();
+        let key_draft = key_draft.clone();
+        let revealing = revealing.clone();
+        let reveal_note = reveal_note.clone();
+        let reveal_until = reveal_until.clone();
+        move || {
+            if revealing.get() {
+                return;
+            }
+            let Some(key) = cfg.get().settings_key else {
+                reveal_note.set("no key stored in app settings".to_owned());
+                return;
+            };
+            reveal_note.set(String::new());
+            revealing.set(true);
+            if cfg!(target_os = "android") {
+                let key_draft = key_draft.clone();
+                let revealing = revealing.clone();
+                let reveal_note = reveal_note.clone();
+                let reveal_until = reveal_until.clone();
+                spawn(async move {
+                    let ok = match host_call(
+                        "confirm-identity".to_owned(),
+                        serde_json::json!({}),
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            key_draft.set(key);
+                            true
+                        }
+                        Err(e) => {
+                            reveal_note.set(js_error_message(e));
+                            false
+                        }
+                    };
+                    if ok {
+                        reveal_until.set(unix_ms() as i64 + 30_000);
+                    }
+                    revealing.set(false);
+                });
+            } else {
+                key_draft.set(key);
+                reveal_until.set(unix_ms() as i64 + 30_000);
+                revealing.set(false);
+            }
+        }
+    };
 
     // The settings card, built first so Android can append its
     // POST_NOTIFICATIONS row (nothing to grant on desktop).
@@ -694,7 +772,10 @@ pub fn App() -> impl IntoElement {
                         .flex_1()
                         .value(key_draft.clone())
                         .placeholder("API key (overrides env / OpenCode)")
-                        .masked(true)
+                        // Masked, until a reveal puts the key in and the
+                        // deadline is set: plaintext for 30 s, then the
+                        // tick clears the draft and masks the input.
+                        .masked(move || key_masked.get() == 0)
                         .on_change(move |v: &str| key_draft.set(v.to_string())),
                 )
                 .child(
@@ -728,10 +809,27 @@ pub fn App() -> impl IntoElement {
                             cfg.set(c);
                         }
                     }),
+                )
+                .child(
+                    chip(
+                        move || {
+                            if revealing.get() {
+                                "…".to_owned()
+                            } else {
+                                "Reveal".to_owned()
+                            }
+                        },
+                        reveal_.clone(),
+                    ),
                 ),
         )
         .child(
             text("Empty key = ZAI_API_KEY, or OpenCode's stored credentials")
+                .text_size(px(11.0))
+                .text_color(move || theme().muted_foreground),
+        )
+        .child(
+            text(move || reveal_note.get())
                 .text_size(px(11.0))
                 .text_color(move || theme().muted_foreground),
         );

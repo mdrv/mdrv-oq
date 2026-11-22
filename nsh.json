@@ -1,9 +1,13 @@
 {
-  "name": "mdrv-oq",
-  "id": "id.mdrv.oq",
-  "version": "0.2.0",
-  "build": 2,
-  "rust": ".",
-  "root": "App",
-  "icon": "icon.png"
+	"name": "mdrv-oq",
+	"id": "id.mdrv.oq",
+	"version": "0.2.0",
+	"build": 2,
+	"rust": ".",
+	"root": "App",
+	"icon": "icon.png",
+	"capabilities": {
+		"host": ["confirm-identity"],
+		"notifications": true
+	}
 }

@@ -15,10 +15,17 @@ package id.mdrv.oq;
 
 import android.app.Activity;
 import android.app.Application;
+import android.app.KeyguardManager;
 import android.content.Intent;
+import android.hardware.biometrics.BiometricManager;
+import android.hardware.biometrics.BiometricPrompt;
 import android.os.Bundle;
+import android.os.CancellationSignal;
 import android.os.Handler;
 import android.os.Looper;
+import com.longbridge.nsh.NshHostReply;
+import com.longbridge.nsh.NshView;
+import java.lang.reflect.Field;
 
 public class OqApp extends Application {
     @Override
@@ -55,6 +62,7 @@ public class OqApp extends Application {
 
                     @Override
                     public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
+                        maybeRegisterHostHandler(activity);
                     }
 
                     @Override
@@ -79,5 +87,80 @@ public class OqApp extends Application {
                     }
                 });
         attempt[0].run();
+    }
+
+    /** Set once the host handler is registered (the first activity create). */
+    private boolean hostHandlerRegistered;
+
+    /**
+     * Registers the "confirm-identity" host handler the Rust side calls
+     * through `host_call` before revealing the stored API key. The
+     * runtime's AppActivity keeps its NshView private, so reach it by
+     * reflection; the first activity create is the earliest point where
+     * the view exists.
+     */
+    private void maybeRegisterHostHandler(Activity activity) {
+        if (hostHandlerRegistered
+                || !"com.longbridge.nsh.AppActivity".equals(activity.getClass().getName())) {
+            return;
+        }
+        try {
+            Field view = activity.getClass().getDeclaredField("view");
+            view.setAccessible(true);
+            Object nshView = view.get(activity);
+            if (!(nshView instanceof NshView)) {
+                return;
+            }
+            ((NshView) nshView)
+                    .handle(
+                            "confirm-identity",
+                            (data, reply) ->
+                                    confirmIdentity(
+                                            getApplicationContext(), (NshHostReply) reply));
+            hostHandlerRegistered = true;
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            android.util.Log.w("OqApp", "host handler registration failed", e);
+        }
+    }
+
+    /**
+     * The device-credential gate: resolve on a successful confirmation,
+     * reject with a human-readable reason otherwise. BIOMETRIC_WEAK |
+     * DEVICE_CREDENTIAL lets the fingerprint or the screen lock pass;
+     * no negative button is set (the credential UI provides one).
+     */
+    private static void confirmIdentity(android.content.Context context, NshHostReply reply) {
+        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+        if (keyguard == null || !keyguard.isKeyguardSecure()) {
+            reply.reject("Set a screen lock first");
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT < 30) {
+            reply.reject("Needs Android 11+");
+            return;
+        }
+        BiometricPrompt prompt =
+                new BiometricPrompt.Builder(context)
+                        .setTitle("Reveal the API key")
+                        .setSubtitle("Confirm it's you")
+                        .setAllowedAuthenticators(
+                                BiometricManager.Authenticators.BIOMETRIC_WEAK
+                                        | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                        .build();
+        prompt.authenticate(
+                new CancellationSignal(),
+                context.getMainExecutor(),
+                new BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationSucceeded(
+                            BiometricPrompt.AuthenticationResult result) {
+                        reply.resolve(null);
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int code, CharSequence errString) {
+                        reply.reject(errString.toString());
+                    }
+                });
     }
 }

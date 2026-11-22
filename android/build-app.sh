@@ -32,8 +32,10 @@ rm -rf "$OUT"
 mkdir -p "$OUT/classes" "$OUT/lib/arm64-v8a"
 
 # 1. Our Java -> dex (classes2.dex; the runtime's is classes.dex).
+#    stubs/ provides compile-time stand-ins for runtime classes
+#    (com.longbridge.nsh.*) and is not dexed — only id/** below.
 javac --release 11 -classpath "$PLATFORM" -d "$OUT/classes" \
-    $(find "$ROOT"/android/src -name '*.java')
+    $(find "$ROOT"/android/src "$ROOT"/android/stubs -name '*.java')
 "$BT/d8" --release --lib "$PLATFORM" --min-api 26 --output "$OUT" \
     $(find "$OUT/classes/id" -name '*.class')
 mv "$OUT/classes.dex" "$OUT/classes2.dex"
