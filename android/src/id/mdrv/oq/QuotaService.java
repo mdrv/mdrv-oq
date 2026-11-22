@@ -77,12 +77,14 @@ public class QuotaService extends Service {
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
-        // Repeated starts (app open, boot, adb) restart the cycle instead
-        // of stacking loops, so an interval change applies right away.
+        // Repeated starts (app open, boot, adb) restart the tick instead
+        // of stacking loops — and each tick re-reads the interval, so a
+        // changed interval applies within a second, no force-stop.
         if (task != null) {
             task.cancel(false);
         }
-        executor.submit(this::cycle);
+        task = executor.scheduleWithFixedDelay(
+                this::tick, 0, 1, TimeUnit.SECONDS);
         return START_STICKY;
     }
 
@@ -113,15 +115,29 @@ public class QuotaService extends Service {
         return DEFAULT_INTERVAL_SECS;
     }
 
-    /// One poll, then reschedule itself — an interval change applies
-    /// after the current cycle instead of being stuck in a fixed grid.
-    private void cycle() {
+    /// The 1 s tick: fetches when the last poll is older than the
+    /// interval (re-read every tick, so a changed interval applies
+    /// within a tick) or when the UI's refresh marker is waiting.
+    private void tick() {
         if (stopped) {
             return;
         }
-        poll();
-        task = executor.schedule(
-                this::cycle, intervalSecs(), TimeUnit.SECONDS);
+        boolean poked = consumeRefreshMarker();
+        boolean due = System.currentTimeMillis() - lastPollMs
+                >= intervalSecs() * 1000L;
+        if (due || poked) {
+            poll();
+        }
+    }
+
+    /// The UI asks for an out-of-band poll by creating
+    /// `files/state/refresh`; consume it and say yes.
+    private boolean consumeRefreshMarker() {
+        java.io.File marker =
+                new java.io.File(getFilesDir(), "state/refresh");
+        boolean existed = marker.exists();
+        marker.delete();
+        return existed;
     }
 
     private void poll() {
