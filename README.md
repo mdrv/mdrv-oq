@@ -24,7 +24,7 @@ GLM · Z.AI Coding Plan                    [Hide]
 Resets      20:35:16 · 3h14m
 Level       lite
 Interval    5m
-Checked     2m ago
+Checked     2m ago                     [Refresh]
 
 Settings
 Alert threshold                      −  +
@@ -54,6 +54,9 @@ API key (overrides env / OpenCode) Save  Clear
   `GLM 27% · ♻️ 20:35:16` with a SystemUI chronometer for the last-poll
   age. The service is the **only poller** on Android; the UI mirrors its
   `state.json`, so the app and the notification always agree.
+- **Manual refresh**: the Refresh chip next to "Checked" re-polls at once
+  and dims to `…` while the fetch runs (desktop; Android's service-owned
+  poller gets a poke in a later round).
 - **Alerts**: one silent notification when the percentage first crosses
   the threshold within a reset cycle, and one when a fetch fails after a
   previously-good poll (desktop; threshold notifications are desktop-side).
@@ -102,7 +105,15 @@ need `gtk4` + `pango` at runtime.
 
 ### Windows
 
-Build from source (no system packages needed; Rust 1.99.1+):
+Install from releases (PowerShell; downloads the right build, verifies its
+SHA-256, installs into `%LOCALAPPDATA%\Programs\mdrv-oq` and adds it to
+PATH):
+
+```powershell
+irm https://github.com/mdrv/mdrv-oq/releases/latest/download/install.ps1 | iex
+```
+
+Or build from source (no system packages needed; Rust 1.99.1+):
 
 ```sh
 git clone https://github.com/mdrv/mdrv-oq
@@ -111,7 +122,8 @@ cargo run --release
 ```
 
 The icon keeps its colors in the notification area; the tooltip carries the
-details. Releases currently ship Linux and Android artifacts only.
+details. Releases ship Windows x64 and ARM64 zips alongside the Linux and
+Android artifacts.
 
 ## Settings
 

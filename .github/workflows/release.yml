@@ -108,16 +108,68 @@ jobs:
           path: mdrv-oq-v*-android.apk
           if-no-files-found: error
 
+  windows:
+    runs-on: windows-latest
+    env:
+      # Cross-compile the ARM64 slice from the x64 runner; the preinstalled
+      # MSVC toolchain ships the ARM64 cross components (rusqlite's bundled
+      # C needs them; the rest of the graph is import libs or pure Rust).
+      RUST_TARGETS: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          targets: aarch64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+
+      - name: Build x86_64
+        run: cargo build --release
+
+      - name: Build aarch64
+        run: cargo build --release --target aarch64-pc-windows-msvc
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          # mdrv-oq-v0.3.0-<rust-target>.zip
+          foreach ($t in @('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')) {
+            $exe = if ($t -eq 'x86_64-pc-windows-msvc') { 'target/release/mdrv-oq.exe' }
+                   else { "target/$t/release/mdrv-oq.exe" }
+            $pkg = "pkg/mdrv-oq"
+            New-Item -ItemType Directory -Force $pkg | Out-Null
+            Copy-Item $exe $pkg/
+            Copy-Item README.md, LICENSE $pkg/
+            Compress-Archive -Path $pkg -DestinationPath "dist/mdrv-oq-$env:GITHUB_REF_NAME-$t.zip"
+            Remove-Item -Recurse -Force pkg
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-windows
+          path: dist/*
+          if-no-files-found: error
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [desktop, android]
+    needs: [desktop, android, windows]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           merge-multiple: true
           path: dist
+
+      - name: Bundle install script
+        run: cp scripts/install.ps1 dist/
 
       - name: SHA256SUMS
         working-directory: dist
