@@ -11,19 +11,19 @@ publish = false
 
 [dependencies]
 mdrv-oq-core = { path = "crates/mdrv-oq-core" }
-nsh-core = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.0" }
-nsh-base = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.0" }
+nsh-core = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.1" }
+nsh-base = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.1" }
 env_logger = "0.11"
 serde_json = "1"
 
 [target.'cfg(all(target_os = "linux", not(target_os = "android")))'.dependencies]
-nsh-platform-linux = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg", "net"] }
+nsh-platform-linux = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg", "net"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-nsh-platform-macos = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg"] }
+nsh-platform-macos = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-nsh-platform-windows = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.0", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg", "net"] }
+nsh-platform-windows = { git = "https://github.com/mdrv/nsh", branch = "mdrv-oq/tray-api", version = "0.6.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term", "svg", "net"] }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1"
