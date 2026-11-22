@@ -185,6 +185,32 @@ fn fire(state: &QuotaState, cfg: &Cfg, now: i64, title: &str) {
     });
 }
 
+thread_local! {
+    /// The tooltip text the tray shows now; the 1 s tick re-renders it and
+    /// only re-sets the tray when the text changed ("45s ago" counts up,
+    /// then minutes tick by, the stale mark appears).
+    static LAST_TIP: std::cell::RefCell<String> =
+        const { std::cell::RefCell::new(String::new()) };
+}
+
+/// Whether the tray's tooltip text has moved on since it was set: its
+/// "ago" counts up with time between polls (false on Android, which has
+/// no tray).
+fn tip_changed(state: &Signal<QuotaState>, cfg: &Signal<Cfg>) -> bool {
+    if cfg!(target_os = "android") {
+        return false;
+    }
+    let c = cfg.get();
+    let tip = render::tooltip(
+        &state.get(),
+        "mdrv-oq",
+        c.show_reset,
+        c.interval_secs,
+        unix_ms() as i64,
+    );
+    LAST_TIP.with(|last| *last.borrow() != tip)
+}
+
 /// The tray icon + title + tooltip + menu, re-set after every change
 /// worth showing. The tile icon carries the percent everywhere; the title
 /// run adds it as text on panels that show SNI labels; a primary click
@@ -198,6 +224,7 @@ fn apply_tray(state: &Signal<QuotaState>, cfg: &Signal<Cfg>, busy: &Signal<bool>
         None => render::icon_svg_placeholder(),
     };
     let tip = render::tooltip(&snapshot, "mdrv-oq", c.show_reset, c.interval_secs, now);
+    LAST_TIP.with(|last| *last.borrow_mut() = tip.clone());
 
     let (pct_run, pct_color) = match snapshot.percentage {
         Some(p) => (
@@ -351,14 +378,31 @@ fn row(label: &'static str, value: impl IntoReactive<nsh_core::element::SharedSt
         .child(text(value).text_size(px(13.0)))
 }
 
-/// A small pressable chip with our inline styling.
+/// Hover surface for a `secondary` chip: one subtle step (~8% of the
+/// lightness axis), derived from the theme's own `secondary` token so
+/// it follows any theme. The default theme's `accent` equals
+/// `secondary` exactly (shadcn neutral), so it is useless as a hover.
+fn hover_bg() -> AdaptiveColor {
+    let s = theme().secondary;
+    AdaptiveColor::new(s.light.darken(0.08), s.dark.lighten(0.08))
+}
+
+/// A small pressable chip with our inline styling. Hover and press
+/// wash the surface one step toward hover; the always-on 1px border
+/// stays transparent until keyboard Tab focus colors it with the ring
+/// token (pressable views are Tab stops by default).
 fn chip(label: impl IntoReactive<nsh_core::element::SharedString>, on_press: impl Fn() + 'static) -> impl IntoElement {
     view()
         .px(px(10.0))
         .py(px(4.0))
-        .rounded(px(6.0))
+        .rounded(move || theme().radius)
+        .border_1()
+        .border_color(AdaptiveColor::TRANSPARENT)
         .bg(move || theme().secondary)
         .text_color(move || theme().secondary_foreground)
+        .hover(|s| s.bg(hover_bg()))
+        .active(|s| s.bg(hover_bg()))
+        .focus(|s| s.border_color(move || theme().ring))
         .on_press(on_press)
         .child(text(label).text_size(px(13.0)))
 }
@@ -400,8 +444,15 @@ pub fn App() -> impl IntoElement {
     let tick = signal(0_u64);
     {
         let tick = tick.clone();
+        let state = state.clone();
+        let cfg = cfg.clone();
+        let busy = busy.clone();
         set_interval(Duration::from_secs(1), move || {
             tick.update(|value| *value += 1);
+            // Keep the tray tooltip's "ago" counting between polls.
+            if tip_changed(&state, &cfg) {
+                apply_tray(&state, &cfg, &busy);
+            }
         });
     }
 
@@ -611,18 +662,70 @@ pub fn App() -> impl IntoElement {
         .child(row("Interval", {
             move || interval_text(interval_cfg.get().interval_secs)
         }))
-        .child(row(
-            "Checked",
-            move || {
-                let _ticking = checked_tick.get();
-                let s = checked_state.get();
-                if s.fetched_at_ms == 0 {
-                    "never".into()
-                } else {
-                    format!("{} ago", render::age_text(s.fetched_at_ms, unix_ms() as i64))
-                }
-            },
-        ))
+        // Checked + manual refresh. Android: the foreground service owns
+        // polling (one poller), so the chip waits for its service poke.
+        .child(
+            view()
+                .flex_row()
+                .w_full()
+                .items_center()
+                .justify_between()
+                .child(
+                    text("Checked")
+                        .text_size(px(13.0))
+                        .text_color(move || theme().muted_foreground),
+                )
+                .child({
+                    let value = view()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .child(
+                            text(move || {
+                                let _ticking = checked_tick.get();
+                                let s = checked_state.get();
+                                if s.fetched_at_ms == 0 {
+                                    "never".to_owned()
+                                } else {
+                                    format!(
+                                        "{} ago",
+                                        render::age_text(s.fetched_at_ms, unix_ms() as i64)
+                                    )
+                                }
+                            })
+                            .text_size(px(13.0)),
+                        );
+                    if cfg!(target_os = "android") {
+                        value
+                    } else {
+                        let refresh_state = state.clone();
+                        let refresh_cfg = cfg.clone();
+                        let refresh_busy = busy.clone();
+                        let refresh_label = busy.clone();
+                        let refresh_guard = busy.clone();
+                        value.child(chip(
+                            move || {
+                                if refresh_label.get() {
+                                    "\u{2026}".to_owned()
+                                } else {
+                                    "Refresh".to_owned()
+                                }
+                            },
+                            move || {
+                                if refresh_guard.get() {
+                                    return;
+                                }
+                                let st = refresh_state.clone();
+                                let cf = refresh_cfg.clone();
+                                let bz = refresh_busy.clone();
+                                spawn(async move {
+                                    poll_once(st, cf, bz).await;
+                                });
+                            },
+                        ))
+                    }
+                }),
+        )
         // Settings.
         .child(
             view()
