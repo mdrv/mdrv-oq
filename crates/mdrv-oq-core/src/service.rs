@@ -13,6 +13,21 @@ pub fn state_file() -> Option<PathBuf> {
     crate::settings::service_state_file()
 }
 
+/// Where the UI drops the refresh request marker for the service;
+/// `None` on platforms without the service.
+pub fn refresh_marker() -> Option<PathBuf> {
+    crate::settings::service_state_dir().map(|dir| dir.join("refresh"))
+}
+
+/// Asks the Android service for an out-of-band poll: create the marker
+/// file its tick watches for. Best-effort — a dead service leaves it
+/// unconsumed, and the chip's busy timeout covers that.
+pub fn poke_refresh() {
+    if let Some(path) = refresh_marker() {
+        let _ = std::fs::write(path, b"");
+    }
+}
+
 /// Parse the service's `state.json` into a snapshot. Lenient: a missing
 /// or malformed file yields "never fetched", not an error.
 pub fn parse_state(json: &str) -> QuotaState {

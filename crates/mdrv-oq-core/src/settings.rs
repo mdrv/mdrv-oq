@@ -165,10 +165,14 @@ pub fn default_db_path() -> PathBuf {
 /// `/data/data/<package>/files/state` on Android, from the package name in
 /// `/proc/self/cmdline`; `None` anywhere along the way or when the
 /// directory cannot be created (then the caller falls back).
-/// The Android service's latest-snapshot file (inside its files dir);
-/// `None` on other platforms.
+pub fn service_state_dir() -> Option<PathBuf> {
+    android_files_state_dir()
+}
+
+/// The Android service's latest-snapshot file; `None` on other
+/// platforms.
 pub fn service_state_file() -> Option<PathBuf> {
-    android_files_state_dir().map(|dir| dir.join("state.json"))
+    service_state_dir().map(|dir| dir.join("state.json"))
 }
 
 #[cfg(target_os = "android")]
