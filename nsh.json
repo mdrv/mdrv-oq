@@ -1,7 +1,7 @@
 {
 	"name": "mdrv-oq",
 	"id": "id.mdrv.oq",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"build": 2,
 	"rust": ".",
 	"root": "App",
