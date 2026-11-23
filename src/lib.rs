@@ -629,6 +629,7 @@ pub fn App() -> impl IntoElement {
         let reveal_note = reveal_note.clone();
         let reveal_until = reveal_until.clone();
         move || {
+            log::info!("reveal: tapped (busy={})", revealing.get());
             if revealing.get() {
                 return;
             }
@@ -636,8 +637,9 @@ pub fn App() -> impl IntoElement {
                 reveal_note.set("no key stored in app settings".to_owned());
                 return;
             };
-            reveal_note.set(String::new());
+            reveal_note.set("asking the device\u{2026}".to_owned());
             revealing.set(true);
+            log::info!("reveal: pressed, asking the host for confirm-identity");
             if cfg!(target_os = "android") {
                 let key_draft = key_draft.clone();
                 let revealing = revealing.clone();
@@ -651,11 +653,14 @@ pub fn App() -> impl IntoElement {
                     .await
                     {
                         Ok(_) => {
+                            log::info!("reveal: host confirmed");
                             key_draft.set(key);
                             true
                         }
                         Err(e) => {
-                            reveal_note.set(js_error_message(e));
+                            let m = js_error_message(e);
+                            log::warn!("reveal: host refused: {m}");
+                            reveal_note.set(m);
                             false
                         }
                     };
@@ -936,13 +941,15 @@ pub fn App() -> impl IntoElement {
                                 None => hex_bg("#9ca3af"),
                             }
                         })
+                        // A fraction of the track, not a fixed width: the
+                        // track spans the window on phones and desktops.
                         .w(move || {
                             let p = bar_state
                                 .get()
                                 .percentage
                                 .unwrap_or(0.0)
                                 .clamp(0.0, 100.0);
-                            px((296.0 * p / 100.0) as f32)
+                            relative((p / 100.0) as f32)
                         }),
                 ),
         )

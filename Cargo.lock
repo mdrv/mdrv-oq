@@ -2673,6 +2673,7 @@ name = "mdrv-oq"
 version = "0.2.0"
 dependencies = [
  "env_logger",
+ "log",
  "mdrv-oq-core",
  "nsh-base",
  "nsh-core",
@@ -2899,7 +2900,7 @@ dependencies = [
 [[package]]
 name = "nsh-base"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "chrono",
  "html5ever",
@@ -2929,7 +2930,7 @@ dependencies = [
 [[package]]
 name = "nsh-core"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "cap-std",
  "chrono",
@@ -2965,7 +2966,7 @@ dependencies = [
 [[package]]
 name = "nsh-engine"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -2991,7 +2992,7 @@ dependencies = [
 [[package]]
 name = "nsh-macros"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "imagesize 0.15.0",
  "proc-macro2",
@@ -3004,7 +3005,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-apple"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "block2",
  "cc",
@@ -3026,7 +3027,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-linux"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "crossbeam-channel",
  "gtk4",
@@ -3045,7 +3046,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-macos"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "block2",
  "crossbeam-channel",
@@ -3073,7 +3074,7 @@ dependencies = [
 [[package]]
 name = "nsh-platform-windows"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "crossbeam-channel",
  "image",
@@ -3093,7 +3094,7 @@ dependencies = [
 [[package]]
 name = "nsh-updater"
 version = "0.6.1"
-source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#97c9e7c6d9f671c96d4d879f9e9edb528dfee422"
+source = "git+https://github.com/mdrv/nsh?branch=mdrv-oq%2Ftray-api#5dc50a3d85522adfcf796e77be776329316ae1f5"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -5040,7 +5041,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.6",
  "windows-sys 0.61.2",

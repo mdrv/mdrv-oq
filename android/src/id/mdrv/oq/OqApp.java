@@ -15,7 +15,6 @@ package id.mdrv.oq;
 
 import android.app.Activity;
 import android.app.Application;
-import android.app.KeyguardManager;
 import android.content.Intent;
 import android.hardware.biometrics.BiometricManager;
 import android.hardware.biometrics.BiometricPrompt;
@@ -28,10 +27,13 @@ import com.longbridge.nsh.NshView;
 import java.lang.reflect.Field;
 
 public class OqApp extends Application {
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private int hostRetriesLeft = 20;
+
     @Override
     public void onCreate() {
         super.onCreate();
-        final Handler handler = new Handler(Looper.getMainLooper());
+        android.util.Log.i("OqApp", "app onCreate");
         final long[] delay = {50};
         final Runnable[] attempt = new Runnable[1];
         attempt[0] = new Runnable() {
@@ -42,7 +44,7 @@ public class OqApp extends Application {
                             new Intent(OqApp.this, QuotaService.class));
                 } catch (RuntimeException notForegroundYet) {
                     if (delay[0] <= 8_000) {
-                        handler.postDelayed(attempt[0], delay[0]);
+                        main.postDelayed(attempt[0], delay[0]);
                         delay[0] *= 2;
                     }
                 }
@@ -67,6 +69,7 @@ public class OqApp extends Application {
 
                     @Override
                     public void onActivityResumed(Activity activity) {
+                        maybeRegisterHostHandler(activity);
                     }
 
                     @Override
@@ -96,8 +99,10 @@ public class OqApp extends Application {
      * Registers the "confirm-identity" host handler the Rust side calls
      * through `host_call` before revealing the stored API key. The
      * runtime's AppActivity keeps its NshView private, so reach it by
-     * reflection; the first activity create is the earliest point where
-     * the view exists.
+     * reflection. On some builds the create dispatch still sees a null
+     * view, so a null schedules retries on the main thread instead of
+     * giving up: the Rust call has no timeout, and an unregistered
+     * handler would wedge the Reveal UI.
      */
     private void maybeRegisterHostHandler(Activity activity) {
         if (hostHandlerRegistered
@@ -109,15 +114,44 @@ public class OqApp extends Application {
             view.setAccessible(true);
             Object nshView = view.get(activity);
             if (!(nshView instanceof NshView)) {
+                if (hostRetriesLeft > 0) {
+                    hostRetriesLeft--;
+                    if (hostRetriesLeft == 19) {
+                        android.util.Log.w("OqApp",
+                                "host handler registration: the activity field is "
+                                        + nshView + ", retrying");
+                    }
+                    main.postDelayed(
+                            () -> maybeRegisterHostHandler(activity), 100);
+                } else {
+                    android.util.Log.w("OqApp",
+                            "host handler registration: the view never appeared");
+                }
                 return;
             }
             ((NshView) nshView)
                     .handle(
                             "confirm-identity",
-                            (data, reply) ->
+                            (data, reply) -> {
+                                try {
+                                    android.util.Log.i(
+                                            "OqApp", "confirm-identity call received");
                                     confirmIdentity(
-                                            getApplicationContext(), (NshHostReply) reply));
+                                            getApplicationContext(),
+                                            (NshHostReply) reply);
+                                } catch (Throwable revealFailure) {
+                                    // The Rust side has no timeout on the call:
+                                    // every path must answer or the UI waits
+                                    // forever.
+                                    android.util.Log.w(
+                                            "OqApp", "confirm-identity failed",
+                                            revealFailure);
+                                    reply.reject(
+                                            "Reveal failed: " + revealFailure);
+                                }
+                            });
             hostHandlerRegistered = true;
+            android.util.Log.i("OqApp", "confirm-identity handler registered");
         } catch (ReflectiveOperationException | ClassCastException e) {
             android.util.Log.w("OqApp", "host handler registration failed", e);
         }
@@ -130,13 +164,31 @@ public class OqApp extends Application {
      * no negative button is set (the credential UI provides one).
      */
     private static void confirmIdentity(android.content.Context context, NshHostReply reply) {
-        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
-        if (keyguard == null || !keyguard.isKeyguardSecure()) {
-            reply.reject("Set a screen lock first");
-            return;
-        }
         if (android.os.Build.VERSION.SDK_INT < 30) {
             reply.reject("Needs Android 11+");
+            return;
+        }
+        BiometricManager biometrics = context.getSystemService(BiometricManager.class);
+        if (biometrics == null) {
+            reply.reject("No biometric service on this device");
+            return;
+        }
+        int can = biometrics.canAuthenticate(
+                BiometricManager.Authenticators.BIOMETRIC_WEAK
+                        | BiometricManager.Authenticators.DEVICE_CREDENTIAL);
+        android.util.Log.i("OqApp", "canAuthenticate: " + can);
+        if (can != BiometricManager.BIOMETRIC_SUCCESS) {
+            String reason;
+            if (can == BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+                    // with DEVICE_CREDENTIAL requested, no screen lock lands here
+                    || can == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) {
+                reason = "Set a screen lock, or enroll a fingerprint first";
+            } else if (can == BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE) {
+                reason = "The biometric hardware is busy, try again";
+            } else {
+                reason = "This device cannot confirm identity (" + can + ")";
+            }
+            reply.reject(reason);
             return;
         }
         BiometricPrompt prompt =
@@ -147,6 +199,7 @@ public class OqApp extends Application {
                                 BiometricManager.Authenticators.BIOMETRIC_WEAK
                                         | BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                         .build();
+        android.util.Log.i("OqApp", "authenticating");
         prompt.authenticate(
                 new CancellationSignal(),
                 context.getMainExecutor(),
@@ -154,11 +207,13 @@ public class OqApp extends Application {
                     @Override
                     public void onAuthenticationSucceeded(
                             BiometricPrompt.AuthenticationResult result) {
+                        android.util.Log.i("OqApp", "confirmed identity");
                         reply.resolve(null);
                     }
 
                     @Override
                     public void onAuthenticationError(int code, CharSequence errString) {
+                        android.util.Log.w("OqApp", "prompt error " + code + ": " + errString);
                         reply.reject(errString.toString());
                     }
                 });
